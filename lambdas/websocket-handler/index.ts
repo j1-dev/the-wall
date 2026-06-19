@@ -1,10 +1,11 @@
-import { uuid } from 'uuid';
+import { v4 } from 'uuid';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import { APIGatewayEvent } from 'aws-lambda';
 
 const ddb = new DynamoDBClient({ region: 'us-east-1' });
 
-export const handler = async (event) => {
+export const handler = async (event: APIGatewayEvent) => {
 	console.log('Received event:', JSON.stringify(event, null, 2));
 	const routeKey = event.requestContext.routeKey;
 
@@ -23,7 +24,7 @@ export const handler = async (event) => {
 	}
 }
 
-const handleConnect = async (event) => {
+const handleConnect = async (event: APIGatewayEvent) => {
 	const connectionId = event.requestContext.connectionId;
 	const doc = DynamoDBDocumentClient.from(ddb);
 	const pk = `CONNECTION#${connectionId}`;
@@ -33,9 +34,9 @@ const handleConnect = async (event) => {
 	const item = {
 		PK: pk,
 		SK: sk,
-		Type: type,
-		ConnectionId: connectionId,
-		CreatedAt: new Date().toISOString(),
+		type: type,
+		connectionId: connectionId,
+		createdAt: new Date().toISOString(),
 	};
 
 	try {
@@ -59,11 +60,11 @@ const handleConnect = async (event) => {
 	}
 }
 
-const handleDisconnect = async (event) => {
+const handleDisconnect = async (event: APIGatewayEvent) => {
 	const connectionId = event.requestContext.connectionId;
 	const doc = DynamoDBDocumentClient.from(ddb);
 	const pk = `CONNECTION#${connectionId}`;
-	const sk = `CONNECTION#${connectionId}`;
+	const sk = `CONNECTION#${connectionId}`; 
 
 	try {
 		await doc.send(
@@ -86,9 +87,48 @@ const handleDisconnect = async (event) => {
 	}
 }
 
-const handleDefault = async (event) => {
+const handleDefault = async (event: APIGatewayEvent) => {
+	const { text, author } = JSON.parse(event.body ?? "");
 	const connectionId = event.requestContext.connectionId;
+	const timestamp = new Date().toISOString();
 	const pk = "MESSAGE"
-	const sk =  `${new Date().toISOString()}#${connectionId}`;
+	const sk = `${timestamp}#${v4()}`; // Unique SK for each message
 	
+	const validText = text && text.trim() !== '' && text.length <= 500;
+	if (!validText) {
+		return {
+			statusCode: 400,
+			body: 'Invalid message text',
+		};
+	}
+
+	const doc = DynamoDBDocumentClient.from(ddb);
+	const item = {
+		PK: pk,
+		SK: sk,
+		type: "MESSAGE",
+		text: text,
+		author: author,
+		createdAt: timestamp,
+	}
+
+	try {
+		await doc.send(
+			new PutCommand({
+				TableName: process.env.TABLE_NAME,
+				Item: item,
+			})
+		);
+		console.log(`Message from ${connectionId} added to DynamoDB`);
+		return {
+			statusCode: 200,
+			body: 'Message received',
+		};
+	} catch (error) {
+		console.error('Error adding message to DynamoDB:', error);
+		return {
+			statusCode: 500,
+			body: 'Failed to process message',
+		};
+	}
 }

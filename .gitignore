@@ -1,5 +1,6 @@
 .env                                                                                                                                                                     
 volume/ 
+dist/
 
 # Terraform                                                                        
 terraform/.terraform/                                                              
