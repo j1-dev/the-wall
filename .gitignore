@@ -5,3 +5,6 @@ volume/
 terraform/.terraform/                                                              
 terraform/terraform.tfstate                                                        
 terraform/terraform.tfstate.backup  
+
+# Node
+node_modules
