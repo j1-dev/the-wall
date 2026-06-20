@@ -8,4 +8,8 @@ output "dynamodb_stream_arn" {
 
 output "websocket_handler_arn" {
   value = aws_lambda_function.websocket_handler.arn
+}
+
+output "websocket_url" {
+  value = aws_apigatewayv2_stage.stage.invoke_url
 } 

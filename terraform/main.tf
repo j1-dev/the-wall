@@ -18,9 +18,10 @@ provider "aws" {
   skip_requesting_account_id  = true
 
   endpoints {
-    dynamodb = "http://localhost:4566"
-    lambda   = "http://localhost:4566"
-    iam      = "http://localhost:4566"
+    dynamodb   = "http://localhost:4566"
+    lambda     = "http://localhost:4566"
+    iam        = "http://localhost:4566"
+    apigatewayv2 = "http://localhost:4566"
   }
 }
 
@@ -104,4 +105,47 @@ resource "aws_lambda_function" "websocket_handler" {
       TABLE_NAME = "the-wall"
     }
   }
+}
+
+resource "aws_apigatewayv2_api" "gateway" {
+  name                       = "gateway"
+  protocol_type              = "WEBSOCKET"
+  route_selection_expression = "$request.body.action"
+}
+
+resource "aws_apigatewayv2_integration" "integration" {
+  api_id           = aws_apigatewayv2_api.gateway.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.websocket_handler.invoke_arn
+}
+
+resource "aws_apigatewayv2_route" "connect_route" {
+  api_id    = aws_apigatewayv2_api.gateway.id
+  route_key = "$connect"
+  target    = "integrations/${aws_apigatewayv2_integration.integration.id}"
+}
+
+resource "aws_apigatewayv2_route" "disconnect_route" {
+  api_id    = aws_apigatewayv2_api.gateway.id
+  route_key = "$disconnect"
+  target    = "integrations/${aws_apigatewayv2_integration.integration.id}"
+}
+resource "aws_apigatewayv2_route" "default_route" {
+  api_id    = aws_apigatewayv2_api.gateway.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.integration.id}"
+}
+
+resource "aws_apigatewayv2_stage" "stage" {
+  api_id      = aws_apigatewayv2_api.gateway.id
+  name        = "local"
+  auto_deploy = true
+}
+
+resource "aws_lambda_permission" "allow_lamda" {
+  statement_id  = "AllowGatewayInvokeLamda"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.websocket_handler.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.gateway.execution_arn}/*"
 }
