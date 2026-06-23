@@ -1,7 +1,7 @@
 .env
 volume/
 dist/
-*.zip
+lambdas/*.zip
 
 # Terraform
 terraform/.terraform/
