@@ -4,6 +4,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -68,11 +72,29 @@ resource "null_resource" "build_websocket_handler" {
   }
 }
 
-data "archive_file" "lambda_zip" {
+resource "null_resource" "build_fanout" {
+  triggers = {
+    source_hash = filemd5("../lambdas/fanout/index.ts")
+  }
+
+  provisioner "local-exec" {
+    command     = "npm run build"
+    working_dir = "../lambdas/fanout"
+  }
+}
+
+data "archive_file" "lambda_zip_websocket" {
   depends_on = [ null_resource.build_websocket_handler ]
   type        = "zip"
   source_dir  = "../lambdas/websocket-handler/dist"
   output_path = "../lambdas/websocket-handler.zip"
+}
+
+data "archive_file" "lambda_zip_fanout" {
+  depends_on = [ null_resource.build_fanout ]
+  type        = "zip"
+  source_dir  = "../lambdas/fanout/dist"
+  output_path = "../lambdas/fanout.zip"
 }
 
 data "aws_iam_policy_document" "assume_role" {
@@ -95,8 +117,27 @@ data "aws_iam_policy_document" "websocket_policy" {
     resources = [aws_dynamodb_table.dynamodb.arn]
   }
 }
+
+data "aws_iam_policy_document" "fanout_policy" {
+  statement {
+    effect    = "Allow"
+    actions   = ["dynamodb:Query", "dynamodb:DeleteItem"]
+    resources = [aws_dynamodb_table.dynamodb.arn]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["execute-api:ManageConnections"]
+    resources = ["${aws_apigatewayv2_api.gateway.execution_arn}/*"]
+  }
+}
+
 resource "aws_iam_role" "websocket_handler_role" {
   name               = "test_role"
+  assume_role_policy = data.aws_iam_policy_document.assume_role.json
+}
+
+resource "aws_iam_role" "fanout_role" {
+  name               = "test_role_2"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
@@ -106,19 +147,47 @@ resource "aws_iam_role_policy" "websocket_handler_policy" {
   policy = data.aws_iam_policy_document.websocket_policy.json
 }
 
+resource "aws_iam_role_policy" "fanout_handler_policy" {
+  name   = "fanout-policy"
+  role   = aws_iam_role.fanout_role.id
+  policy = data.aws_iam_policy_document.fanout_policy.json
+}
+
 resource "aws_lambda_function" "websocket_handler" {
   runtime          = "nodejs22.x"
-  handler          = "dist/index.handler"
+  handler          = "index.handler"
   function_name    = "websocket-handler"
   role             = aws_iam_role.websocket_handler_role.arn
-  filename         = data.archive_file.lambda_zip.output_path
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+  filename         = data.archive_file.lambda_zip_websocket.output_path
+  source_code_hash = data.archive_file.lambda_zip_websocket.output_base64sha256
   environment {
     variables = {
       TABLE_NAME        = "the-wall"
       DYNAMODB_ENDPOINT = "http://localhost:4566"
     }
   }
+}
+
+resource "aws_lambda_function" "fanout" {
+  runtime          = "nodejs22.x"
+  handler          = "index.handler"
+  function_name    = "fanout"
+  role             = aws_iam_role.fanout_role.arn
+  filename         = data.archive_file.lambda_zip_fanout.output_path
+  source_code_hash = data.archive_file.lambda_zip_fanout.output_base64sha256
+  environment {
+    variables = {
+      WEBSOCKET         = "http://localhost:4566"
+      TABLE_NAME        = "the-wall"
+      DYNAMODB_ENDPOINT = "http://localhost:4566"
+    }
+  }
+}
+
+resource "aws_lambda_event_source_mapping" "fanout_mapping" {
+  event_source_arn = aws_dynamodb_table.dynamodb.stream_arn
+  function_name = aws_lambda_function.fanout.arn
+  starting_position = "LATEST"
 }
 
 resource "aws_apigatewayv2_api" "gateway" {

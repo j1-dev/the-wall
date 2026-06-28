@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "tsc"
+    "build": "esbuild index.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --external:@aws-sdk/*"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +19,7 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.162",
     "@types/node": "^26.0.0",
+    "esbuild": "^0.28.1",
     "typescript": "^6.0.3"
   }
 }
