@@ -18,9 +18,9 @@ provider "aws" {
   skip_requesting_account_id  = true
 
   endpoints {
-    dynamodb   = "http://localhost:4566"
-    lambda     = "http://localhost:4566"
-    iam        = "http://localhost:4566"
+    dynamodb     = "http://localhost:4566"
+    lambda       = "http://localhost:4566"
+    iam          = "http://localhost:4566"
     apigatewayv2 = "http://localhost:4566"
   }
 }
@@ -56,9 +56,22 @@ resource "aws_dynamodb_table" "dynamodb" {
   stream_view_type = "NEW_IMAGE"
 }
 
-data "archive_file" "lamda_zip" {
+
+resource "null_resource" "build_websocket_handler" {
+  triggers = {
+    source_hash = filemd5("../lambdas/websocket-handler/index.ts")
+  }
+
+  provisioner "local-exec" {
+    command     = "npm run build"
+    working_dir = "../lambdas/websocket-handler"
+  }
+}
+
+data "archive_file" "lambda_zip" {
+  depends_on = [ null_resource.build_websocket_handler ]
   type        = "zip"
-  source_dir  = "../lambdas/websocket-handler"
+  source_dir  = "../lambdas/websocket-handler/dist"
   output_path = "../lambdas/websocket-handler.zip"
 }
 
@@ -98,11 +111,12 @@ resource "aws_lambda_function" "websocket_handler" {
   handler          = "dist/index.handler"
   function_name    = "websocket-handler"
   role             = aws_iam_role.websocket_handler_role.arn
-  filename         = data.archive_file.lamda_zip.output_path
-  source_code_hash = data.archive_file.lamda_zip.output_base64sha256
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
   environment {
     variables = {
-      TABLE_NAME = "the-wall"
+      TABLE_NAME        = "the-wall"
+      DYNAMODB_ENDPOINT = "http://localhost:4566"
     }
   }
 }
@@ -142,8 +156,8 @@ resource "aws_apigatewayv2_stage" "stage" {
   auto_deploy = true
 }
 
-resource "aws_lambda_permission" "allow_lamda" {
-  statement_id  = "AllowGatewayInvokeLamda"
+resource "aws_lambda_permission" "allow_lambda" {
+  statement_id  = "AllowGatewayInvokeLambda"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.websocket_handler.function_name
   principal     = "apigateway.amazonaws.com"

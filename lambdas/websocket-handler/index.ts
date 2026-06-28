@@ -3,7 +3,12 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { APIGatewayEvent } from 'aws-lambda';
 
-const ddb = new DynamoDBClient({ region: 'us-east-1' });
+const ddb = new DynamoDBClient({
+	region: 'us-east-1',
+  		...(process.env.DYNAMODB_ENDPOINT && {
+    	endpoint: process.env.DYNAMODB_ENDPOINT,
+  	}),
+});
 
 export const handler = async (event: APIGatewayEvent) => {
 	console.log('Received event:', JSON.stringify(event, null, 2));
@@ -88,14 +93,15 @@ const handleDisconnect = async (event: APIGatewayEvent) => {
 }
 
 const handleDefault = async (event: APIGatewayEvent) => {
-	const { text, author } = JSON.parse(event.body ?? "");
+	const { text, author } = JSON.parse(event.body ?? "{}");
 	const connectionId = event.requestContext.connectionId;
 	const timestamp = new Date().toISOString();
 	const pk = "MESSAGE"
 	const sk = `${timestamp}#${v4()}`; // Unique SK for each message
 	
 	const validText = text && text.trim() !== '' && text.length <= 500;
-	if (!validText) {
+	const validAuthor = author && author.trim() !== '' && author.length <= 100;
+	if (!validText || !validAuthor) {
 		return {
 			statusCode: 400,
 			body: 'Invalid message text',
@@ -109,7 +115,7 @@ const handleDefault = async (event: APIGatewayEvent) => {
 		type: "MESSAGE",
 		text: text,
 		author: author,
-		createdAt: timestamp,
+		timestamp: timestamp,
 	}
 
 	try {
