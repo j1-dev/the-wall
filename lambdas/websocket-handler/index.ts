@@ -1,17 +1,25 @@
 import { v4 } from "uuid";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, QueryCommand } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   PutCommand,
   DeleteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { APIGatewayEvent } from "aws-lambda";
+import {
+  ApiGatewayManagementApiClient,
+  PostToConnectionCommand,
+} from "@aws-sdk/client-apigatewaymanagementapi";
 
 const ddb = new DynamoDBClient({
   region: "us-east-1",
   ...(process.env.DYNAMODB_ENDPOINT && {
     endpoint: process.env.DYNAMODB_ENDPOINT,
   }),
+});
+
+const apigw = new ApiGatewayManagementApiClient({
+  endpoint: process.env.WEBSOCKET,
 });
 
 export const handler = async (event: APIGatewayEvent) => {
@@ -56,6 +64,31 @@ const handleConnect = async (event: APIGatewayEvent) => {
       }),
     );
     console.log(`Connection ${connectionId} added to DynamoDB`);
+
+    const messages = await doc.send(
+      new QueryCommand({
+        TableName: process.env.TABLE_NAME,
+        Limit: 50,
+        KeyConditionExpression: "#t = :t",
+        ExpressionAttributeNames: { "#t": "PK" },
+        ExpressionAttributeValues: { ":t": "MESSAGE" },
+        ScanIndexForward: false,
+      }),
+    );
+
+    if (messages.Items?.length !== 0) {
+      try {
+        apigw.send(
+          new PostToConnectionCommand({
+            ConnectionId: connectionId,
+            Data: Buffer.from(JSON.stringify(messages.Items || [])),
+          }),
+        );
+      } catch (error) {
+        console.error("Error sending initial messages |", error);
+      }
+    }
+
     return {
       statusCode: 200,
       body: "Connected",
@@ -142,4 +175,3 @@ const handleDefault = async (event: APIGatewayEvent) => {
     };
   }
 };
-

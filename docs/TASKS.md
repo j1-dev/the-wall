@@ -59,7 +59,7 @@
 
 **Done when:** A new WebSocket connection immediately receives a JSON payload containing an array of up to 50 messages, each with `text`, `author`, and `createdAt` fields, in chronological order.
 
-**Status:** [ ] not started
+**Status:** [x] done
 
 ---
 

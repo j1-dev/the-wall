@@ -113,7 +113,7 @@ data "aws_iam_policy_document" "assume_role" {
 data "aws_iam_policy_document" "websocket_policy" {
   statement {
     effect    = "Allow"
-    actions   = ["dynamodb:PutItem", "dynamodb:DeleteItem"]
+    actions   = ["dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query"]
     resources = [aws_dynamodb_table.dynamodb.arn]
   }
 }
