@@ -15,11 +15,13 @@ See [CONTEXT.md](./CONTEXT.md) for the domain language (Board, Message, Author, 
 ## Project structure
 
 ```
-index.html                     static frontend entry point
 lambdas/
   websocket-handler/           $connect / $disconnect / $default handler
   fanout/                      DynamoDB Streams -> fan-out to connections
 terraform/                     infra: DynamoDB, API Gateway WebSocket, Lambdas, IAM
+frontend/                      where the frontend lives
+  index.html                   static frontend entry point
+  app.js                       where all the dynamic functions live
 docker-compose.yml             LocalStack (ministack image)
 docs/
   architecture.md              architecture diagram (Mermaid)
