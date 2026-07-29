@@ -118,7 +118,7 @@
 
 **Done when:** Opening `frontend/index.html` in a browser shows "connected" in the status area within a second or two, confirmed via the browser's WebSocket inspector.
 
-**Status:** [ ] not started
+**Status:** [x] done
 
 ---
 
